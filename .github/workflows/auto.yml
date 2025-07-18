@@ -1,42 +1,98 @@
-name: Auto
+name: Auto-Dify-Workflow
 
 on:
-  # 修改为正确的cron表达式（每天北京时间6:30）
   schedule:
-    - cron: '*/5 * * * *'  
+    - cron: '*/5 * * * *'  # UTC时间22:30 = 北京时间次日06:30
   workflow_dispatch:
 
-# 只保留核心环境变量
-env:
-  DIFY_TOKENS: ${{ secrets.DIFY_TOKENS }}
-  DIFY_BASE_URL: ${{ secrets.DIFY_BASE_URL }}
-
 jobs:
-  DifyWorkflow:
+  RunDifyWorkflow:
     runs-on: ubuntu-latest
+    env:
+      DIFY_TOKENS: ${{ secrets.DIFY_TOKENS }}
+      DIFY_BASE_URL: ${{ secrets.DIFY_BASE_URL }}
+      BOARD_ID: ${{ secrets.BOARD_ID }}
+      USER_NAME: ${{ secrets.USER_NAME }}
+      LOGIN_PASSWORD: ${{ secrets.DIFY_LOGIN_PASSWORD }}  # 安全存储的密码
+
     steps:
-      # 1. 升级Actions版本
-      - uses: actions/checkout@v4
-      
-      # 2. 设置Node.js环境（明确版本号）
-      - uses: actions/setup-node@v4
+      # 1. 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      # 2. 设置Node.js环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'  # 指定稳定的LTS版本
+          node-version: '20'
           
-      # 3. 使用依赖缓存加速构建
+      # 3. 缓存依赖
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
+          key: ${{ runner.os }}-node-${{ hashFiles('package.json') }}
           
-      # 4. 安装依赖（使用lock文件确保一致性）
+      # 4. 安装依赖
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: npm install axios
         
-      # 5. 执行核心任务（单独运行脚本）
-      - name: Run Dify Workflow
-        run: node .github/workflows/trigger-dify.js
-        env:
-          # 仅在运行步骤中加载输入参数
-          DIFY_INPUTS: ${{ secrets.DIFY_INPUTS }}
+      # 5. 创建触发脚本（动态生成）
+      - name: Create trigger script
+        run: |
+          cat > trigger-dify.js << EOF
+          const axios = require('axios');
+          
+          (async () => {
+            console.log('[启动] Dify工作流执行');
+            try {
+              // 构造输入参数（安全不打印密码）
+              const inputs = {
+                board_id: process.env.BOARD_ID,
+                user_name: process.env.USER_NAME,
+                password: process.env.LOGIN_PASSWORD
+              };
+              
+              // API请求配置
+              const API_URL = `${process.env.DIFY_BASE_URL}/console/api/run`;
+              console.log(\`[请求] 目标URL: \${API_URL}\`);
+              
+              const response = await axios.post(
+                API_URL,
+                {
+                  inputs,
+                  workflow_id: "73c4ad27-9b57-4d19-9db1-31d58350da95"
+                },
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': process.env.DIFY_TOKENS
+                  },
+                  timeout: 30000
+                }
+              );
+              
+              // 检查响应
+              if (response.data?.success) {
+                console.log('[成功] 工作流执行完成');
+              } else {
+                throw new Error(response.data?.message || '未知API错误');
+              }
+              
+            } catch (error) {
+              console.error('[失败] 执行错误:');
+              console.error('错误信息:', error.message);
+              
+              if (error.response) {
+                console.error('响应状态:', error.response.status);
+                console.error('响应数据:', JSON.stringify(error.response.data, null, 2));
+              }
+              
+              process.exit(1);
+            }
+          })();
+          EOF
+          
+      # 6. 执行工作流
+      - name: Trigger Dify Workflow
+        run: node trigger-dify.js
