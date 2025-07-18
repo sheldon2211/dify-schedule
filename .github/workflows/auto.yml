@@ -1,33 +1,42 @@
 name: Auto
 
 on:
+  # 修改为正确的cron表达式（每天北京时间6:30）
   schedule:
-    - cron: "*/5 * * * *" # 北京时间上午06:30
+    - cron: '*/5 * * * *'  
   workflow_dispatch:
 
+# 只保留核心环境变量
 env:
   DIFY_TOKENS: ${{ secrets.DIFY_TOKENS }}
   DIFY_BASE_URL: ${{ secrets.DIFY_BASE_URL }}
-  DIFY_INPUTS: ${{ secrets.DIFY_INPUTS }}
-  EMAIL_USER: ${{ secrets.EMAIL_USER }}
-  EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-  EMAIL_TO: ${{ secrets.EMAIL_TO }}
-  DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
-  PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-  WEIXIN_WEBHOOK: ${{ secrets.WEIXIN_WEBHOOK }}
-  SERVERPUSHKEY: ${{ secrets.SERVERPUSHKEY }}
-  FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
-  AIBOTK_KEY: ${{ secrets.AIBOTK_KEY }}
-  AIBOTK_ROOM_RECIVER: ${{ secrets.AIBOTK_ROOM_RECIVER }}
-  AIBOTK_CONTACT_RECIVER: ${{ secrets.AIBOTK_CONTACT_RECIVER }}
 
 jobs:
   DifyWorkflow:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
-      - name: Run Project
-        run: |
-          yarn
-          yarn workflowDify
+      # 1. 升级Actions版本
+      - uses: actions/checkout@v4
+      
+      # 2. 设置Node.js环境（明确版本号）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'  # 指定稳定的LTS版本
+          
+      # 3. 使用依赖缓存加速构建
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
+          
+      # 4. 安装依赖（使用lock文件确保一致性）
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+        
+      # 5. 执行核心任务（单独运行脚本）
+      - name: Run Dify Workflow
+        run: node .github/workflows/trigger-dify.js
+        env:
+          # 仅在运行步骤中加载输入参数
+          DIFY_INPUTS: ${{ secrets.DIFY_INPUTS }}
