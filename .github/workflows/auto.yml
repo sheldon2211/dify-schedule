@@ -2,7 +2,7 @@ name: Auto-Dify-Workflow
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # UTC时间22:30 = 北京时间次日06:30
+    - cron: ''  # UTC时间22:30 = 北京时间次日06:30
   workflow_dispatch:
 
 jobs:
